@@ -27,11 +27,13 @@ export function Html({children, title, styles = []}) {
             <li><a href="/generator">generator</a></li>
             <li><a href="/really-long-list">render a really long list</a></li>
             <li><a href="/out-of-order">out-of-order streaming</a></li>
-            <li>Blogs</li>
-            <ul>
-              <li><a href="/blog/swtl">Service Worker Templating Language</a></li>
-              <li><a href="/blog/swsr">Service Worker Side Rendering</a></li>
-            </ul>
+            <li>
+              Blogs
+              <ul>
+                <li><a href="/blog/swtl">Service Worker Templating Language</a></li>
+                <li><a href="/blog/swsr">Service Worker Side Rendering</a></li>
+              </ul>
+            </li>
             <li><a href="/not-found">not found</a></li>
           </ul>
         </nav>
