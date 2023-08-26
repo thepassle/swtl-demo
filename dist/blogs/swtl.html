@@ -1,0 +1,255 @@
+<p>I&#39;ve previously written about Service Worker Side Rendering (<strong>SWSR</strong>) in this <a href="https://dev.to/thepassle/service-worker-side-rendering-swsr-cb1">blog</a>, when I was exploring running <a href="https://github.com/withastro/astro">Astro</a> in a Service Worker.</p>
+<p>I recently had a usecase for a small app at work and I just kind of defaulted to a SPA. At some point I realized I needed a Service Worker for my app, and I figured, why not have the entire app rendered by the Service Worker? All I need to do was fetch some data, some light interactivity that I don&#39;t need a library or framework for, and stitch some html partials together based on that data. If I did that in a Service Worker, I could stream in the html as well.</p>
+<p>While I was able to achieve this fairly easily, the developer experience of manually stitching strings together wasnt great. Being myself a fan of buildless libraries, such as <a href="https://github.com/developit/htm">htm</a> and <a href="https://github.com/lit/lit">lit-html</a>, I figured I&#39;d try to take a stab at implementing a DSL for component-like templating in Service Workers myself, called <a href="https://github.com/thepassle/swtl">Service Worker Templating Language</a> (<strong>SWTL</strong>), here&#39;s what it looks like:</p>
+<pre><code class="lang-js">import { html, Router } from <span class="hljs-string">'swtl'</span>;
+import { BreadCrumbs } from <span class="hljs-string">'./BreadCrumbs.js'</span>
+
+function HtmlPage({children, title}) {
+  <span class="hljs-keyword">return</span> html`<span class="javascript">&lt;html&gt;<span class="xml"><span class="hljs-tag">&lt;<span class="hljs-name">head</span>&gt;</span><span class="hljs-tag">&lt;<span class="hljs-name">title</span>&gt;</span>${title}<span class="hljs-tag">&lt;/<span class="hljs-name">title</span>&gt;</span><span class="hljs-tag">&lt;/<span class="hljs-name">head</span>&gt;</span></span><span class="xml"><span class="hljs-tag">&lt;<span class="hljs-name">body</span>&gt;</span>${children}<span class="hljs-tag">&lt;/<span class="hljs-name">body</span>&gt;</span></span><span class="xml"><span class="hljs-tag">&lt;/<span class="hljs-name">html</span>&gt;</span></span></span>`;
+}
+
+function Footer() {
+  <span class="hljs-keyword">return</span> html`<span class="javascript">&lt;footer&gt;Copyright&lt;<span class="hljs-regexp">/footer&gt;</span></span>`;
+}
+
+const router = <span class="hljs-keyword">new</span> Router({
+  routes: [
+    {
+      path: <span class="hljs-string">'/'</span>,
+      render: <span class="hljs-function"><span class="hljs-params">({params, query, request})</span> =&gt;</span> html`<span class="javascript"><span class="hljs-regexp">
+        &lt;${HtmlPage} title="Home"&gt;
+          &lt;h1&gt;Home&lt;/</span>h1&gt;
+          <span class="xml"><span class="hljs-tag">&lt;<span class="hljs-name">nav</span>&gt;</span>
+            <span class="hljs-tag">&lt;<span class="hljs-name">${BreadCrumbs}</span> <span class="hljs-attr">path</span>=<span class="hljs-string">${request.url.pathname}/</span>&gt;</span>
+          <span class="hljs-tag">&lt;/<span class="hljs-name">nav</span>&gt;</span></span>
+          ${fetch(<span class="hljs-string">'./some-partial.html'</span>)}
+          ${caches.match(<span class="hljs-string">'./another-partial.html'</span>)}
+          &lt;ul&gt;
+            ${[<span class="hljs-string">'foo'</span>, <span class="hljs-string">'bar'</span>, <span class="hljs-string">'baz'</span>].map(<span class="hljs-function"><span class="hljs-params">i</span> =&gt;</span> html</span>`&lt;li&gt;${i}&lt;/li&gt;`<span class="javascript">)}
+          &lt;<span class="hljs-regexp">/ul&gt;
+          &lt;${Footer}/</span>&gt;
+        <span class="xml"><span class="hljs-tag">&lt;//&gt;</span>
+      </span></span>`
+    },
+  ]
+});
+
+self.addEventListener(<span class="hljs-string">'fetch'</span>, <span class="hljs-function"><span class="hljs-params">(event)</span> =&gt;</span> {
+  <span class="hljs-keyword">if</span> (event.request.mode === <span class="hljs-string">'navigate'</span>) {
+    event.respondWith(router.handleRequest(event.request));
+  }
+});
+</code></pre>
+<h2 id="-html-"><code>html</code></h2>
+<p>To create this DSL, I&#39;m using Tagged Template Literals. For those of you who are not familiar with them, here&#39;s what they look like:</p>
+<pre><code class="lang-js"><span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">html</span><span class="hljs-params">(statics, <span class="hljs-rest_arg">...dynamics</span>)</span> </span>{
+  console.log(statics);
+  console.log(dynamics);
+}
+
+html`hello ${<span class="hljs-number">1</span>} world`;
+
+<span class="hljs-comment">// ["hello ", " world"];</span>
+<span class="hljs-comment">// [1]</span>
+</code></pre>
+<p>A Tagged Template Literal gets passed an array of static values (string), and an array of dynamic values (expressions). Based on those strings and expressions, I can parse the result and add support for reusable components.</p>
+<p>I figured that since I&#39;m doing this in a Service Worker, I&#39;m only creating html responses and not doing any kind of diffing, I should be able to just return a stitched-together array of values, and components. Based on <code>preact/htm</code>&#39;s component syntax, I built something like this:</p>
+<pre><code class="lang-js"><span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">Foo</span>(<span class="hljs-params"></span>) </span>{
+  <span class="hljs-keyword">return</span> html<span class="hljs-string">`&lt;h2&gt;foo&lt;/h2&gt;`</span>;
+}
+
+<span class="hljs-keyword">const</span> world = <span class="hljs-string">'world'</span>;
+
+<span class="hljs-keyword">const</span> template = html<span class="hljs-string">`&lt;h1&gt;Hello <span class="hljs-subst">${world}</span>&lt;/h1&gt;&lt;<span class="hljs-subst">${Foo}</span>/&gt;`</span>;
+
+<span class="hljs-comment">// ['&lt;h1&gt;Hello ', 'world', '&lt;/h1&gt;', { fn: Foo, children: [], properties: []}]</span>
+</code></pre>
+<p>I can then create a <code>render</code> function to serialize the results and stream the html to the browser:</p>
+<pre><code class="lang-js"><span class="hljs-comment">/**
+ * `render` is also a generator function that takes care of stringifying values
+ * and actually calling the component functions so their html gets rendered too
+ */</span>
+<span class="hljs-keyword">const</span> iterator = render(html`hello ${<span class="hljs-number">1</span>} world`);
+<span class="hljs-keyword">const</span> encoder = <span class="hljs-keyword">new</span> TextEncoder();
+
+<span class="hljs-keyword">const</span> stream = <span class="hljs-keyword">new</span> ReadableStream({
+  <span class="hljs-function"><span class="hljs-keyword">async</span> <span class="hljs-title">pull</span>(<span class="hljs-params">controller</span>) </span>{
+    <span class="hljs-keyword">const</span> { <span class="hljs-keyword">value</span>, done } = <span class="hljs-keyword">await</span> iterator.next();
+    <span class="hljs-keyword">if</span> (done) {
+      controller.close();
+    } <span class="hljs-keyword">else</span> {
+      controller.enqueue(encoder.encode(<span class="hljs-keyword">value</span>));
+    }
+  }
+});
+
+<span class="hljs-comment">/**
+ * Will stream the response to the browser as results are coming
+ * in from our iterable
+ */</span>
+<span class="hljs-keyword">new</span> Response(stream);
+</code></pre>
+<p>However, I then realized that since I&#39;m streaming the html anyways, instead of waiting for a template to be parsed entirely and return an array, why not stream the templates <em>as they are being parsed</em>? Consider the following example:</p>
+<pre><code class="lang-js"><span class="hljs-function"><span class="hljs-keyword">function</span>* <span class="hljs-title">html</span>(<span class="hljs-params">statics, ...dynamics</span>) </span>{
+  <span class="hljs-keyword">for</span>(<span class="hljs-keyword">let</span> i = <span class="hljs-number">0</span>; i &lt; statics.length; i++) {
+    <span class="hljs-keyword">yield</span> statics[i];
+    <span class="hljs-keyword">if</span> (dynamics[i]) {
+      <span class="hljs-keyword">yield</span> dynamics[i];
+    }
+  }
+}
+</code></pre>
+<p>Using a generator function, we can yield results as we encounter them, and stream those results to the browser immediately. We can then iterate over the template results:</p>
+<pre><code class="lang-js"><span class="hljs-keyword">const</span> template = html<span class="hljs-string">`hello <span class="hljs-subst">${<span class="hljs-number">1</span>}</span> world`</span>;
+
+<span class="hljs-keyword">for</span> (<span class="hljs-keyword">const</span> chunk <span class="hljs-keyword">of</span> template) {
+  <span class="hljs-built_in">console</span>.log(chunk);
+}
+
+<span class="hljs-comment">// "hello "</span>
+<span class="hljs-comment">// 1</span>
+<span class="hljs-comment">// " world"</span>
+</code></pre>
+<p>What makes this even cooler is that we can provide first class support for other streamable things, like iterables:</p>
+<pre><code class="lang-js"><span class="hljs-function"><span class="hljs-keyword">function</span>* <span class="hljs-title">generator</span>(<span class="hljs-params"></span>) </span>{
+  <span class="hljs-keyword">yield</span>* html<span class="hljs-string">`&lt;li&gt;1&lt;/li&gt;`</span>;
+  <span class="hljs-keyword">yield</span>* html<span class="hljs-string">`&lt;li&gt;2&lt;/li&gt;`</span>;
+}
+
+html<span class="hljs-string">`&lt;ul&gt;<span class="hljs-subst">${generator()}</span>&lt;/ul&gt;`</span>;
+</code></pre>
+<p>Or other streams, or <code>Response</code>s:</p>
+<pre><code class="lang-js">html<span class="hljs-string">`
+  <span class="hljs-subst">${fetch(<span class="hljs-string">'./some-html.html'</span>)}</span>
+  <span class="hljs-subst">${caches.match(<span class="hljs-string">'./some-html.html'</span>)}</span>
+`</span>;
+</code></pre>
+<h3 id="why-not-do-this-at-build-time-">Why not do this at build time?</h3>
+<p>The following template:</p>
+<pre><code class="lang-js"><span class="xml">const template = html`<span class="hljs-tag">&lt;<span class="hljs-name">h1</span>&gt;</span>hi<span class="hljs-tag">&lt;/<span class="hljs-name">h1</span>&gt;</span><span class="hljs-tag">&lt;<span class="hljs-name">$</span></span></span><span class="hljs-template-variable">{Foo}</span><span class="xml"><span class="hljs-tag"> <span class="hljs-attr">prop</span>=<span class="hljs-string">$</span></span></span><span class="hljs-template-variable">{1}</span><span class="xml"><span class="hljs-tag">&gt;</span>bar<span class="hljs-tag">&lt;//&gt;</span>`</span>
+</code></pre>
+<p>Would compile to something like:</p>
+<pre><code class="lang-js">const template = [<span class="hljs-string">'&lt;h1&gt;hi&lt;/h1&gt;'</span>, {<span class="hljs-string">fn:</span> Foo, <span class="hljs-string">properties:</span> [{<span class="hljs-string">name:</span> <span class="hljs-string">'prop'</span>, <span class="hljs-string">value:</span> <span class="hljs-number">1</span>}], <span class="hljs-string">children:</span> [<span class="hljs-string">'bar'</span>]}];
+</code></pre>
+<p>While admittedly that would save a little runtime overhead, it would increase the bundlesize of the service worker itself. Considering the fact that templates are streamed <em>while</em> they are being parsed, I&#39;m not convinced pre-compiling templates would actually result in a noticeable difference. </p>
+<p>Also I&#39;m a big fan of <a href="https://dev.to/thepassle/the-cost-of-convenience-kco">buildless development</a>, and libraries like <a href="https://github.com/lit/lit">lit-html</a> and <a href="https://github.com/developit/htm">preact/htm</a>, and the bundlesize for the <code>html</code> function itself is small enough:</p>
+<p><img src="https://dev-to-uploads.s3.amazonaws.com/uploads/articles/s0bvub78wvu99e2p27oi.png" alt="Minified code for the html function"></p>
+<h2 id="isomorphic-rendering">Isomorphic rendering</h2>
+<p>While I&#39;m using this library in a Service Worker only, you can also use this library for isomorphic rendering in worker-like environments, or even just on any node-like JS runtime, <em>and</em> the browser! The following code will work in any kind of environment:</p>
+<pre><code class="lang-js"><span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">Foo</span>(<span class="hljs-params"></span>) </span>{
+  <span class="hljs-keyword">return</span> html<span class="hljs-string">`&lt;h1&gt;hi&lt;/h1&gt;`</span>;
+}
+
+<span class="hljs-keyword">const</span> template = html<span class="hljs-string">`&lt;main&gt;&lt;<span class="hljs-subst">${Foo}</span>/&gt;&lt;/main&gt;`</span>;
+
+<span class="hljs-keyword">const</span> result = <span class="hljs-keyword">await</span> renderToString(template);
+<span class="hljs-comment">// &lt;main&gt;&lt;h1&gt;hi&lt;/h1&gt;&lt;/main&gt;</span>
+</code></pre>
+<p>Hurray for agnostic libraries!</p>
+<h2 id="router">Router</h2>
+<p>I also implemented a simple router based on <a href="https://developer.mozilla.org/en-US/docs/Web/API/URLPattern">URLPattern</a> so you can easily configure your apps routes:</p>
+<pre><code class="lang-js">import { Router, html } from <span class="hljs-string">'swtl'</span>;
+
+const router = <span class="hljs-keyword">new</span> Router({
+  routes: [
+    {
+      path: <span class="hljs-string">'/'</span>,
+      render: <span class="hljs-function"><span class="hljs-params">()</span> =&gt;</span> html`<span class="javascript">&lt;${HtmlPage}&gt;<span class="xml"><span class="hljs-tag">&lt;<span class="hljs-name">h1</span>&gt;</span>Home<span class="hljs-tag">&lt;/<span class="hljs-name">h1</span>&gt;</span></span><span class="xml"><span class="hljs-tag">&lt;//&gt;</span></span></span>`
+    },
+    {
+      path: <span class="hljs-string">'/users/:id'</span>,
+      render: <span class="hljs-function"><span class="hljs-params">({params})</span> =&gt;</span> html`<span class="javascript"><span class="xml"><span class="hljs-tag">&lt;<span class="hljs-name">${HtmlPage}</span>&gt;</span><span class="hljs-tag">&lt;<span class="hljs-name">h1</span>&gt;</span>User: ${params.id}<span class="hljs-tag">&lt;/<span class="hljs-name">h1</span>&gt;</span><span class="hljs-tag">&lt;//&gt;</span></span></span>`
+    },
+    {
+      path: <span class="hljs-string">'/foo'</span>,
+      render: <span class="hljs-function"><span class="hljs-params">({params, query, request})</span> =&gt;</span> html`<span class="javascript"><span class="xml"><span class="hljs-tag">&lt;<span class="hljs-name">${HtmlPage}</span>&gt;</span><span class="hljs-tag">&lt;<span class="hljs-name">h1</span>&gt;</span>${request.url.pathname}<span class="hljs-tag">&lt;/<span class="hljs-name">h1</span>&gt;</span><span class="hljs-tag">&lt;//&gt;</span></span></span>`
+    },
+  ]
+});
+
+self.addEventListener(<span class="hljs-string">'fetch'</span>, <span class="hljs-function"><span class="hljs-params">(event)</span> =&gt;</span> {
+  <span class="hljs-keyword">if</span> (event.request.mode === <span class="hljs-string">'navigate'</span>) {
+    event.respondWith(router.handleRequest(event.request));
+  }
+});
+</code></pre>
+<h2 id="out-of-order-streaming">Out of order streaming</h2>
+<p>I also wanted to try and take a stab at out of order streaming, for cases where you may need to fetch some data. While you could do something like this:</p>
+<pre><code class="lang-js"><span class="hljs-keyword">async</span> <span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">SomeComponent</span>(<span class="hljs-params"></span>) </span>{
+  <span class="hljs-keyword">try</span> {
+    <span class="hljs-keyword">const</span> data = <span class="hljs-keyword">await</span> fetch(<span class="hljs-string">'/api/foo'</span>).then(<span class="hljs-function"><span class="hljs-params">r</span> =&gt;</span> r.json());
+    <span class="hljs-keyword">return</span> html<span class="hljs-string">`
+      &lt;ul&gt;
+        <span class="hljs-subst">${data.map(user =&gt; html<span class="hljs-string">`
+          &lt;li&gt;<span class="hljs-subst">${user.name}</span>&lt;/li&gt;
+        `</span>)}</span>
+      &lt;/ul&gt;
+    `</span>;
+  } <span class="hljs-keyword">catch</span> {
+    <span class="hljs-keyword">return</span> html<span class="hljs-string">`Failed to fetch data.`</span>;
+  }
+}
+</code></pre>
+<p>This would make the api call blocking and stop streaming html until the api call resolves, and we can&#39;t really show a loading state. Instead, we ship a special <code>&lt;${Async}/&gt;</code> component that takes an asynchronous <code>task</code> function to enable out of order streaming.</p>
+<pre><code class="lang-js">import { Async, <span class="hljs-keyword">when</span>, html } from <span class="hljs-string">'swtl'</span>;
+
+html`<span class="javascript">
+  &lt;${Async} task=${() =&gt; fetch(<span class="hljs-string">'/api/foo'</span>).then(<span class="hljs-function"><span class="hljs-params">r</span> =&gt;</span> r.json())}&gt;
+    ${({state, data, error}) =&gt; html</span>`
+      &lt;h2&gt;Fetching data&lt;/h2&gt;
+      ${<span class="hljs-keyword">when</span>(state === <span class="hljs-string">'pending'</span>, <span class="hljs-function"><span class="hljs-params">()</span> =&gt;</span> html`<span class="javascript">&lt;${Spinner}/&gt;</span>`)}
+      ${<span class="hljs-keyword">when</span>(state === <span class="hljs-string">'error'</span>, <span class="hljs-function"><span class="hljs-params">()</span> =&gt;</span> html`<span class="javascript">Failed to fetch data.</span>`)}
+      ${<span class="hljs-keyword">when</span>(state === <span class="hljs-string">'success'</span>, <span class="hljs-function"><span class="hljs-params">()</span> =&gt;</span> html`<span class="javascript">
+        &lt;ul&gt;
+          ${data.map(<span class="hljs-function"><span class="hljs-params">user</span> =&gt;</span> html</span>`
+            &lt;li&gt;${user.name}&lt;/li&gt;
+          `<span class="javascript">)}
+        &lt;<span class="hljs-regexp">/ul&gt;
+      </span></span>`)}
+    `<span class="javascript"><span class="hljs-regexp">}
+  &lt;/</span><span class="hljs-regexp">/&gt;
+</span></span>`;
+</code></pre>
+<p>When an <code>Async</code> component is encountered, it kicks off the <code>task</code> that is provided to it, and immediately stream/render the <code>pending</code> state, and continues streaming the rest of the document. When the rest of the document is has finished streaming to the browser, we await all the promises in order of resolution (the promise that resolves first gets handled first), and replace the <code>pending</code> result with either the <code>error</code> or <code>success</code> template, based on the result of the <code>task</code>.</p>
+<p>So considering the following code:</p>
+<pre><code class="lang-js">html`<span class="javascript">
+  &lt;${HtmlPage}&gt;
+    <span class="xml"><span class="hljs-tag">&lt;<span class="hljs-name">h1</span>&gt;</span>home<span class="hljs-tag">&lt;/<span class="hljs-name">h1</span>&gt;</span></span>
+    &lt;ul&gt;
+      <span class="xml"><span class="hljs-tag">&lt;<span class="hljs-name">li</span>&gt;</span>
+        <span class="hljs-tag">&lt;<span class="hljs-name">${Async}</span> <span class="hljs-attr">task</span>=<span class="hljs-string">${()</span> =&gt;</span> new Promise(r =&gt; setTimeout(() =&gt; r({foo:'foo'}), 3000))}&gt;
+          ${({state, data}) =&gt; html</span></span>`
+            ${<span class="hljs-keyword">when</span>(state === <span class="hljs-string">'pending'</span>, <span class="hljs-function"><span class="hljs-params">()</span> =&gt;</span> html`<span class="javascript"><span class="xml">[PENDING] slow</span></span>`)}
+            ${<span class="hljs-keyword">when</span>(state === <span class="hljs-string">'error'</span>, <span class="hljs-function"><span class="hljs-params">()</span> =&gt;</span> html`<span class="javascript"><span class="xml">[ERROR] slow</span></span>`)}
+            ${<span class="hljs-keyword">when</span>(state === <span class="hljs-string">'success'</span>, <span class="hljs-function"><span class="hljs-params">()</span> =&gt;</span> html`<span class="javascript"><span class="xml">[RESOLVED] slow</span></span>`)}
+          `<span class="javascript"><span class="xml">}
+        <span class="hljs-tag">&lt;//&gt;</span>
+      <span class="hljs-tag">&lt;/<span class="hljs-name">li</span>&gt;</span></span>
+      &lt;li&gt;
+        <span class="xml"><span class="hljs-tag">&lt;<span class="hljs-name">${Async}</span> <span class="hljs-attr">task</span>=<span class="hljs-string">${()</span> =&gt;</span> new Promise(r =&gt; setTimeout(() =&gt; r({bar:'bar'}), 1500))}&gt;
+          ${({state, data}) =&gt; html</span></span>`
+            ${<span class="hljs-keyword">when</span>(state === <span class="hljs-string">'pending'</span>, <span class="hljs-function"><span class="hljs-params">()</span> =&gt;</span> html`<span class="javascript"><span class="xml">[PENDING] fast</span></span>`)}
+            ${<span class="hljs-keyword">when</span>(state === <span class="hljs-string">'error'</span>, <span class="hljs-function"><span class="hljs-params">()</span> =&gt;</span> html`<span class="javascript"><span class="xml">[ERROR] fast</span></span>`)}
+            ${<span class="hljs-keyword">when</span>(state === <span class="hljs-string">'success'</span>, <span class="hljs-function"><span class="hljs-params">()</span> =&gt;</span> html`<span class="javascript"><span class="xml">[RESOLVED] fast</span></span>`)}
+          `<span class="javascript"><span class="xml">}
+        <span class="hljs-tag">&lt;//&gt;</span>
+      <span class="hljs-tag">&lt;/<span class="hljs-name">li</span>&gt;</span></span>
+    &lt;<span class="hljs-regexp">/ul&gt;
+    &lt;h2&gt;footer&lt;/</span>h2&gt;
+  <span class="xml"><span class="hljs-tag">&lt;//&gt;</span>
+</span></span>`;
+</code></pre>
+<p>This is the result:</p>
+<p><img src="https://dev-to-uploads.s3.amazonaws.com/uploads/articles/xdynf41uqwfymb4b0rki.gif" alt="loading states are rendered first, while continuing streaming the rest of the document. Once the promises resolve, the content is updated in-place with the success state"></p>
+<p>We can see that the entire document is streamed, initially displaying loading states. Then, once the promises resolve, the content is updated in-place to display the success state.</p>
+<h2 id="wrapping-up">Wrapping up</h2>
+<p>I&#39;ve created an initial version of <a href="https://github.com/thepassle/swtl"><code>swtl</code></a> to NPM, and so far it seems to hold up pretty well for my app, but please let me know if you run into any bugs or issues! Lets make it better together 🙂</p>
+<h2 id="acknowledgements">Acknowledgements</h2>
+<ul>
+<li><a href="https://github.com/lit/lit">lit-html</a></li>
+<li><a href="https://github.com/developit/htm">preact/htm</a></li>
+<li><a href="https://github.com/withastro/astro">Astro</a> and <a href="https://twitter.com/matthewcp">Matthew Philips</a> - For doing the hard work of implementing the rendering logic back when I <a href="https://github.com/withastro/astro/pull/4832">requested</a> this in astro</li>
+<li><a href="https://twitter.com/kettanaito">Artem Zakharchenko</a> - For helping with the handling of first-resolve-first-serve promises</li>
+<li><a href="https://twitter.com/alvarlagerlof">Alvar Lagerlöf</a> - For a cool demo of out of order streaming which largely influenced my implementation</li>
+</ul>
+<p>And it&#39;s also good to mention that, while working/tweeting about some of the work in progress updates of this project, it seems like many other people had similar ideas and even similar implementations as well! It&#39;s always cool to see different people converging on the same idea 🙂</p>

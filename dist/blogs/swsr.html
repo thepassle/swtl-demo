@@ -1,0 +1,216 @@
+<p>Server Side Rendering (SSR) seems to be all the rage. Hydration strategies are the talk of the town, and honestly, it&#39;s been kind of a refreshing change from the client side JS-heavy framework status quo. However, I&#39;m always surprised at how little exploration into service workers takes place in these discussions. </p>
+<p>Single Page Application Progressive Web App (whew) architecture has been <a href="https://developer.chrome.com/blog/app-shell/">well established</a> by now; You build your application shell, precache your required assets, and fetch dynamic data that makes your app do what your app does. Additionally, Single Page Applications (SPA&#39;s) are usually relatively easy to PWA-ify <em>after</em> they&#39;re already build.</p>
+<p>The same can&#39;t be said for Multi Page Applications (MPA&#39;s) however, for MPA&#39;s you really have to take any kind of offline-capabilities along in your architecture right from the start of your project. And I just can&#39;t help but feel there&#39;s currently no real good solution for PWA-ifying MPA&#39;s, that has an excellent developer experience, like so many JS frameworks, or SSR frameworks have. Static Site Generators don&#39;t seem to really be investing in this space a whole lot, either. In fact, there only a handful of solutions I could find for this kind of architecture at all!</p>
+<h2 id="service-workers-on-the-server">Service Workers on the Server</h2>
+<p>One of those solutions is made by the brilliant <a href="https://twitter.com/jeffposnick">Jeff Posnick</a>. His blog <a href="jeffy.info">jeffy.info</a> is completely rendered by a service worker. The initial render happens on the server, in a <a href="https://developers.cloudflare.com/workers/examples/">Cloudflare Worker</a> which uses the same API&#39;s as a service worker that would run in the browser. What&#39;s interesting about this approach is that this allows Jeff to reuse the same code both on his server, as well as the client. This is also known as <em>isomorphic rendering</em>.</p>
+<p>When the user visits the blog for the first time, the Cloudflare Worker renders the page, and on the client side the service worker starts installing. When the service worker has installed, the service worker can take control of network requests, and serve responses itself; potentially omitting the server entirely, and delivering instant responses. </p>
+<p>You can read all about how Jeff build his blog on, well, <a href="https://jeffy.info/2021/07/17/sw-rendering.html">his blog about it</a>, but it mainly comes down to: Streams.</p>
+<h3 id="stream-stitching">Stream Stitching</h3>
+<p>Consider the following example:</p>
+<pre><code class="lang-js">registerRoute(
+  <span class="hljs-keyword">new</span> URLPatternMatcher({pathname: <span class="hljs-string">'/(.*).html'</span>}).matcher,
+  streamingStrategy(
+    [
+      () =&gt; Templates.Start({site}),
+
+      <span class="hljs-keyword">async</span> ({<span class="hljs-keyword">event</span>, <span class="hljs-keyword">params</span>}) =&gt; {
+        <span class="hljs-keyword">const</span> post = <span class="hljs-keyword">params</span>.pathname.groups[<span class="hljs-number">0</span>];
+        <span class="hljs-keyword">const</span> response = <span class="hljs-keyword">await</span> loadStatic(<span class="hljs-keyword">event</span>, `/<span class="hljs-keyword">static</span>/${post}.json`);
+        <span class="hljs-keyword">if</span> (response?.ok) {
+          <span class="hljs-keyword">const</span> json = <span class="hljs-keyword">await</span> response.json();
+          <span class="hljs-keyword">return</span> Templates.Page({site, ...json});
+        }
+        <span class="hljs-keyword">return</span> Templates.Error({site});
+      },
+
+      () =&gt; Templates.End({site}),
+    ],
+    {<span class="hljs-string">'content-type'</span>: <span class="hljs-string">'text/html'</span>},
+  ),
+);
+</code></pre>
+<p>Here, Jeff makes use of a pattern I&#39;ll refer to as <em>stream stitching</em>. This is cool, because browsers can already start rendering streamed HTML <em>as it arrives</em>. This also means you can already stream the <code>&lt;head&gt;</code> of your page, which may already start downloading scripts, parsing styles, and other assets, while waiting for the rest of the HTML to come streaming in.</p>
+<p>While from a technical point of view this is <em>really</em> exciting, I can&#39;t help but feel the developer experience is somewhat... lacking. Workbox does an <em>excellent</em> job at providing abstractions over streaming APIs so you <a href="https://gist.github.com/jakearchibald/64e26e7a1d9b06b3fa3ec0383f2b1f91">dont have to do things manually</a>, and helps with things like registering and matching routes, but even then it still feels somewhat close to the metal, especially compared to the developer experience of all these flashy SSR frameworks. Why can&#39;t we have nice things with service workers?</p>
+<h2 id="service-worker-side-rendering-with-astro">Service Worker Side Rendering with Astro</h2>
+<p>I&#39;ve recently been hacking on <a href="https://astro.build">Astro</a> SSR projects a bunch, and was looking into creating a Cloudflare adapter to deploy my Astro SSR application to a Cloudflare environment. It was when I was reading up on Cloudflare workers that I was reminded of this <a href="https://cloudflare.tv/event/6ZJ5mEjrgcnCtBXBsUtyqV">chat</a> by Jeff Posnick and Luke Edwards about his blog and the architecture laid out earlier in this blogpost, and it made me wonder; if I&#39;m able to deploy Astro on an environment thats so similar to a service worker... <strong>Why can&#39;t I run Astro in an actual service worker?</strong></p>
+<p>So I started hacking on some code and, well, it turns out you totally can. In this example, you can see a real Astro SSR application run by a service worker. This is exciting for several reasons:</p>
+<p><img src="https://dev-to-uploads.s3.amazonaws.com/uploads/articles/pfnquf3unfvw302v9fwl.gif" alt="experiment"></p>
+<ul>
+<li>Your Astro app is now offline-capable</li>
+<li>Your app is now installable</li>
+<li>The function invocations of your hosting provider are reduced dramatically, because requests can be served by the service worker in-browser</li>
+<li>Huge performance benefits</li>
+<li>It&#39;s a progressive enhancement</li>
+</ul>
+<p>But most of all, it may mean we&#39;re getting super close to having an excellent developer experience! Astro may very well be the first framework capable of delivering us developer experiences like the following:</p>
+<p><code>/blog/[id].astro</code>:</p>
+<pre><code class="lang-jsx"><span class="hljs-meta">---</span>
+import Header from <span class="hljs-string">'../src/components/Header.astro'</span>;
+import Sidemenu from <span class="hljs-string">'../src/components/Sidemenu.astro'</span>;
+import Footer from <span class="hljs-string">'../src/components/Footer.astro'</span>;
+const { id } = Astro.params;
+<span class="hljs-meta">---</span>
+&lt;html<span class="hljs-string">&gt;
+  &lt;Header/&gt;
+  &lt;Sidemenu/&gt;
+  {fetch(`/blog/${id}.html`)}
+  &lt;Footer/&gt;
+&lt;/html&gt;</span>
+</code></pre>
+<p>Wouldn&#39;t this be amazing? This code could run both on the server, as well as in a service worker. <em>However!</em> As cool as this would be, we&#39;re not quite there. Currently, Astro doesn&#39;t yet support streaming responses, we&#39;ll get into that in a little bit, but for now dream along with me for a minute.</p>
+<p>What would happen in the code snippet is the following: On initial visit, the server renders this page, much like in Jeff&#39;s blog example. The service worker then gets installed and can take control of requests, which means that from then on, <em>the exact same</em> code can get rendered by the service worker in the browser instead, and deliver responses immediately.</p>
+<p>Furthermore, in this example the <code>&lt;Header/&gt;</code> and <code>&lt;Sidemenu/&gt;</code> are static components and can be streamed immediately. The <code>fetch</code> promise returns a response, which body is... You guessed it, a stream! This means the browser can already start rendering the header (which may also start download other assets), render the sidemenu, and then immediately start streaming the result of the <code>fetch</code> to the browser.</p>
+<h3 id="isomorphic-rendering">Isomorphic rendering</h3>
+<p>We could even expand on this pattern:</p>
+<pre><code class="lang-jsx"><span class="hljs-meta">---</span>
+import Header from <span class="hljs-string">'../src/components/Header.astro'</span>;
+import Sidemenu from <span class="hljs-string">'../src/components/Sidemenu.astro'</span>;
+import Footer from <span class="hljs-string">'../src/components/Footer.astro'</span>;
+const { id } = Astro.params;
+<span class="hljs-meta">---</span>
+&lt;html<span class="hljs-string">&gt;
+  &lt;Header/&gt;
+  &lt;Sidemenu/&gt;
+  {fetch(`/blog/${id}.html`).catch(() =&gt; {
+    return caches?.match?.('/404.html') || fetch('/404.html');
+  })}
+  &lt;Footer/&gt;
+&lt;/html&gt;</span>
+</code></pre>
+<p>Imagine if we visited a URL with an <code>id</code> that doesnt exist. If the user doesn&#39;t have a service worker installed yet, the server would:</p>
+<ul>
+<li>Try to fetch <code>/blog/${id}.html</code>, which fails</li>
+<li>Run the <code>catch</code> callback, and try to execute <code>caches?.match?.(&#39;/404.html&#39;)</code>, which we don&#39;t have access to on the server</li>
+<li>So it&#39;ll fall back to <code>|| fetch(&#39;/404.html&#39;)</code> instead</li>
+</ul>
+<p>However, if the user <em>does</em> have a service worker installed already, it could have precached the <code>&#39;/404.html&#39;</code> during installation, and just load it instantly from the cache.</p>
+<p>You can probably even imagine some helpers like:</p>
+<pre><code class="lang-jsx">&lt;Header/&gt;
+{cacheFirst(`/blog/${id}.html`)}
+{staleWhileRevalidate(`/blog/${id}.html`)}
+{networkFirst(`/blog/${id}.html`)}
+&lt;Footer/&gt;
+</code></pre>
+<h2 id="the-downsides">The downsides</h2>
+<h3 id="not-quite-there-yet">Not quite there yet</h3>
+<p>Currently, Astro&#39;s responses are not streamed <em>yet</em>. <a href="https://twitter.com/n_moore">Nate</a>, one of Astro&#39;s core maintainers, did however <a href="https://twitter.com/n_moore/status/1521527267658276865?s=20&amp;t=xlxL7wxeqg9zTc8m23Hq0w">mention</a> that:</p>
+<blockquote>
+<p>The good news about Astro is that streaming has been the end goal since day one! We don’t need any architecture changes to support it—Astro components are just async iterators. We’ve mostly been waiting for SSR APIs to stabilize before exposing streaming.</p>
+</blockquote>
+<p>Consider the following code snippet from Astro&#39;s source code:</p>
+<pre><code class="lang-js">export async <span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">render</span><span class="hljs-params">(htmlParts: TemplateStringsArray, <span class="hljs-rest_arg">...expressions</span>: any[])</span> </span>{
+  <span class="hljs-keyword">return</span> <span class="hljs-keyword">new</span> AstroComponent(htmlParts, expressions);
+}
+</code></pre>
+<p>Where an <code>AstroComponent</code> looks like:</p>
+<pre><code class="lang-js">class AstroComponent {
+  constructor(htmlParts, expressions) {
+<span class="hljs-code">    this.htmlParts = htmlParts;</span>
+<span class="hljs-code">    this.expressions = expressions;</span>
+  }
+  get [<span class="hljs-string">Symbol.toStringTag</span>](<span class="hljs-link"></span>) {
+<span class="hljs-code">    return "AstroComponent";</span>
+  }
+  *[<span class="hljs-string">Symbol.iterator</span>](<span class="hljs-link"></span>) {
+<span class="hljs-code">    const { htmlParts, expressions } = this;</span>
+<span class="hljs-code">    for (let i = 0; i &lt; htmlParts.length; i++) {</span>
+<span class="hljs-code">      const html = htmlParts[i];</span>
+<span class="hljs-code">      const expression = expressions[i];</span>
+<span class="hljs-code">      yield markHTMLString(html);</span>
+<span class="hljs-code">      yield _render(expression);</span>
+<span class="hljs-code">    }</span>
+  }
+}
+</code></pre>
+<p>As Nate said, just an async iterator. This means that it could potentially even allow for <a href="https://github.com/withastro/rfcs/discussions/188#discussioncomment-2681215">promises and iterables</a> in Astro expressions, e.g.:</p>
+<pre><code class="lang-js"><span class="hljs-meta">---</span>
+import Header from <span class="hljs-string">'../src/components/Header.astro'</span>;
+
+function* renderLongList() {
+  yield <span class="hljs-string">"item 1"</span>;
+  yield <span class="hljs-string">"item 2"</span>;
+}
+<span class="hljs-meta">---</span>
+&lt;html<span class="hljs-string">&gt;
+  &lt;Header/&gt;
+  {renderLongList()}
+&lt;/html&gt;</span>
+</code></pre>
+<p>Or the example with <code>fetch</code> we saw earlier in this post:</p>
+<pre><code class="lang-jsx"><span class="hljs-params">&lt;Header/&gt;</span>
+<span class="hljs-params">&lt;Sidemenu/&gt;</span>
+{fetch(`<span class="hljs-meta-keyword">/blog/</span>${id}.html`)}
+<span class="hljs-params">&lt;Footer/&gt;</span>
+</code></pre>
+<p>There&#39;s currently some discussion ongoing in this <a href="https://github.com/withastro/rfcs/discussions/188">RFC discussion</a> on the Astro repository. If this is a future that you&#39;re excited for, please do leave a comment to signal some interest to the maintainers. There is a cost, however. There have also been other feature proposals that would make streaming responses impossible, like for example post-processing HTML, or the concept of a <code>&lt;astro:head&gt;</code> element, where a child component can append to the head. Both of these things are not compatible with streaming responses. Although, perhaps these features dont have to be mutually exclusive; maybe renderers could even be made configurable by Astro via the <code>astro.config.mjs</code>: </p>
+<pre><code class="lang-js"><span class="hljs-selector-tag">export</span> <span class="hljs-selector-tag">default</span> <span class="hljs-selector-tag">defineConfig</span>({
+  <span class="hljs-attribute">ssr</span>: {
+    output: <span class="hljs-string">'stream'</span>
+  }
+});
+</code></pre>
+<p>Much to think about and consider, but either way, please do check out the RFC discussion and leave your thoughts, or simply an upvote/emoji!</p>
+<h3 id="bundlesize">Bundlesize</h3>
+<p>The other downside is bundlesize. Admittedly, Astro&#39;s bundle when run in a service worker is... large. However, I&#39;ve not done too much experimentation here yet, but it seems like there&#39;s a lot of room for improvement on bundlesize.</p>
+<h2 id="astro-service-worker">Astro-service-worker</h2>
+<p>While streaming responses in Astro may be a ways off yet, I did turn my service worker experimentation into an Astro Integration that you can already use today: <a href="https://github.com/thepassle/astro-service-worker"><code>astro-service-worker</code></a>. This integration will take your Astro SSR project, and create a service worker build for it.</p>
+<p>Getting started is easy, install the dependency:</p>
+<pre><code>npm <span class="hljs-selector-tag">i</span> -S astro-service-worker
+</code></pre><p>And add the integration to your <code>astro.config.mjs</code>:</p>
+<pre><code class="lang-diff"><span class="hljs-keyword">import</span> { defineConfig } <span class="hljs-keyword">from</span> <span class="hljs-string">'astro/config'</span>;
+<span class="hljs-keyword">import</span> netlify <span class="hljs-keyword">from</span> <span class="hljs-string">'@astrojs/netlify'</span>;
++<span class="hljs-keyword">import</span> serviceWorker <span class="hljs-keyword">from</span> <span class="hljs-string">'astro-service-worker'</span>;
+
+<span class="hljs-keyword">export</span> <span class="hljs-keyword">default</span> defineConfig({
+  <span class="hljs-attr">adapters</span>: netlify(),
+  <span class="hljs-attr">integrations</span>: [
++   serviceWorker()
+  ]
+});
+</code></pre>
+<h3 id="demo">Demo</h3>
+<p>You can find an example of a small app that uses <code>astro-service-worker</code> in this <a href="https://astro-sw-demo.netlify.app/">demo</a>, and you can find the source code for the demo <a href="https://github.com/thepassle/astro-service-worker">here</a>.</p>
+<p><img src="https://dev-to-uploads.s3.amazonaws.com/uploads/articles/m4hljhllzuwxw9ib72q3.png" alt="demo"></p>
+<h3 id="server-first-server-only-service-worker-first-service-worker-only">Server-first, server-only, service-worker-first, service-worker-only</h3>
+<p>When service-worker-izing your Astro applications, you have to keep in mind that the Astro code you write in your Astro frontmatter should now also be able to run in the browser. This means that you can&#39;t make use of any commonjs dependencies, or node built-ins, like <code>&#39;fs&#39;</code>, for example. However, it could be the case that you have need for some server-only code, like for example accessing a database, or webhooks, or redirect callbacks, or whatever. In this case, you could exclude those endpoints from the output service worker bundle.</p>
+<p>This means that you can have an entire fullstack codebase with: Server-first, server-only, service-worker-first, and service-worker-only code <strong>in the same project</strong>. Additionally, the service worker is entirely a progressive enhancement. If your user uses a browser that doesn&#39;t support service workers, the server will still render your app just fine.</p>
+<h3 id="network-only">Network-only</h3>
+<p>It could be the case that you would like to make use of some server-only endpoints or pages, perhaps for creating database connections, or other things that depend on Nodejs built-in modules that are not available in the browser. If that is the case, you can specify which page you&#39;d like to exclude from the service worker bundle:</p>
+<pre><code class="lang-js"><span class="hljs-selector-tag">export</span> <span class="hljs-selector-tag">default</span> <span class="hljs-selector-tag">defineConfig</span>({
+  <span class="hljs-attribute">integrations</span>: [
+    <span class="hljs-built_in">serviceWorker</span>({
+      networkOnly: [<span class="hljs-string">'/networkonly-page'</span>, <span class="hljs-string">'/db-endpoint'</span>, <span class="hljs-string">'etc'</span>]
+    }),
+  ]
+});
+</code></pre>
+<h3 id="customize-service-worker-logic">Customize Service Worker logic</h3>
+<p>You can also extend the Service Worker and add your own custom logic. To do this, you can use the <code>swSrc</code> option.</p>
+<pre><code class="lang-js"><span class="hljs-selector-tag">export</span> <span class="hljs-selector-tag">default</span> <span class="hljs-selector-tag">defineConfig</span>({
+  <span class="hljs-attribute">integrations</span>: [
+    <span class="hljs-built_in">serviceWorker</span>({
+      swSrc: <span class="hljs-string">'my-custom-sw.js'</span>,
+    }),
+  ]
+});
+</code></pre>
+<p><code>my-project/my-custom-sw.js</code>:</p>
+<pre><code class="lang-js">self.addEventListener(<span class="hljs-string">'fetch'</span>, <span class="hljs-function"><span class="hljs-params">(e)</span> =&gt;</span> {
+  <span class="hljs-built_in">console</span>.log(<span class="hljs-string">'Custom logic!'</span>);
+});
+</code></pre>
+<h3 id="combine-with-other-integrations">Combine with other integrations</h3>
+<p>You can even combine this with other SSR integrations; if your components are SSR-able, they should also be SWSR-able! Do note however that there may be some differences in a traditional server environment, and a service worker. This means there may be additional things you need to shim.</p>
+<pre><code class="lang-js"><span class="hljs-keyword">import</span> { defineConfig } <span class="hljs-keyword">from</span> <span class="hljs-string">'astro/config'</span>;
+<span class="hljs-keyword">import</span> netlify <span class="hljs-keyword">from</span> <span class="hljs-string">'@astrojs/netlify'</span>;
+<span class="hljs-keyword">import</span> customElements <span class="hljs-keyword">from</span> <span class="hljs-string">'custom-elements-ssr/astro.js'</span>;
+<span class="hljs-keyword">import</span> serviceWorker <span class="hljs-keyword">from</span> <span class="hljs-string">'./index.js'</span>;
+
+<span class="hljs-keyword">export</span> <span class="hljs-keyword">default</span> defineConfig({
+  <span class="hljs-attr">adapter</span>: netlify(),
+  <span class="hljs-attr">integrations</span>: [
+    customElements(),
+    serviceWorker()
+  ]
+});
+</code></pre>
