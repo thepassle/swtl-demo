@@ -12,6 +12,10 @@ export function Html({children, title, styles = []}) {
           img {
             max-width: 500px;
           }
+
+          footer {
+            margin-top: 50px;
+          }
         </style>
         ${styles}
       </head>
@@ -32,6 +36,13 @@ export function Html({children, title, styles = []}) {
           </ul>
         </nav>
         ${children}
+        <footer>
+          This is the footer. 
+          <ul>
+            <li><a href="https://github.com/thepassle/swtl">Github</a></li>
+            <li><a href="https://twitter.com/passle_">Twitter</a></li>
+          </ul>
+        </footer>
         <script>
           let refreshing;
           async function handleUpdate() {

@@ -1,43 +1,368 @@
-(()=>{var q=Object.freeze,D=Object.defineProperty;var R=(e,t)=>q(D(e,"raw",{value:q(t||e.slice())}));var T=Symbol("component"),N=Symbol("async");var L="TEXT",b="COMPONENT",m="NONE",S="PROP",$="CHILDREN",g="SET_PROP",M="PROP_VAL";function*s(e,...t){if(!t.length)yield*e;else if(!t.some(l=>typeof l=="function"))yield*e.reduce((l,n,i)=>[...l,n,...t.length>i?[t[i]]:[]],[]);else{let l=L,n=m,i=m,a=[];for(let r=0;r<e.length;r++){let f="",u={kind:T,properties:[],children:[],fn:void 0};for(let o=0;o<e[r].length;o++){let c=e[r][o];if(l===L)c==="<"&&!e[r][o+1]&&typeof t[r]=="function"?(l=b,u.fn=t[r],a.push(u)):f+=c;else if(l===b)if(n===S){let d=a[a.length-1],w=d?.properties[d.properties.length-1];if(i===g){let p="";for(;e[r][o]!=="="&&e[r][o]!=="/"&&e[r][o]!==">"&&e[r][o]!=='"'&&e[r][o]!=="'"&&e[r][o]!==" "&&p!=="...";)p+=e[r][o],o++;if(e[r][o]==="=")i=M;else if(e[r][o]==="/"&&n===S){n=m,i=m;let h=a.pop();a.length||(f="",yield h)}else e[r][o]===">"&&n===S&&(n=$,i=m);p==="..."?d.properties.push(...Object.entries(t[r]).map(([h,k])=>({name:h,value:k}))):p&&d.properties.push({name:p,value:!0})}else if(i===M){if(e[r][o]==='"'||e[r][o]==="'"){let p=e[r][o];if(!e[r][o+1])w.value=t[r],i=g;else{let h="";for(o++;e[r][o]!==p;)h+=e[r][o],o++;w.value=h||"",i=g}}else if(e[r][o-1]){let p="";for(;e[r][o]!==" "&&e[r][o]!=="/"&&e[r][o]!==">";)p+=e[r][o],o++;if(w.value=p||"",i=g,e[r][o]==="/"){let h=a.pop();a.length||(yield h)}}else if(w.value=t[r-1],i=g,e[r][o]===">")i=m,n=$;else if(e[r][o]==="/"){let p=a.pop();a.length||(yield p)}}}else if(n===$){let d=a[a.length-1];if(e[r][o+1]==="/"&&e[r][o+2]==="/"){f&&(d.children.push(f),f=""),o+=3;let w=a.pop();a.length||(l=L,n=m,yield w)}else e[r][o]==="<"&&!e[r][o+1]&&typeof t[r]=="function"?(f&&(d.children.push(f),f=""),n=S,i=g,u.fn=t[r],a.push(u)):e[r][o+1]?f+=e[r][o]:f&&t.length>r&&(f+=e[r][o],d.children.push(f),d.children.push(t[r]))}else if(c===">")n=$;else if(c===" ")n=S,i=g;else if(c==="/"&&e[r][o+1]===">"){l=L,n=m;let d=a.pop();a.length||(f="",yield d),o++}else f+=c;else f+=c}f&&n!==$&&(yield f),a.length>1&&u.fn&&a[a.length-2].children.push(u),t.length>r&&l!==b&&(yield t[r])}}}function O({task:e,children:t}){return{task:e,template:t.find(l=>typeof l=="function")}}O.kind=N;var v=(e,t)=>e?t():"";function W(e){return typeof e.getReader=="function"}async function*Y(e){let t=e.getReader(),l=new TextDecoder("utf-8");try{for(;;){let{done:n,value:i}=await t.read();if(n)return;yield l.decode(i)}}finally{t.releaseLock()}}async function*I(e){if(W(e))for await(let t of Y(e))yield t;else for await(let t of e)yield t}async function*C(e,t){if(typeof e=="string")yield e;else if(Array.isArray(e))yield*P(e,t);else if(typeof e.then=="function"){let l=await e;yield*C(l,t)}else if(e instanceof Response&&e.body)yield*I(e.body);else if(e[Symbol.asyncIterator]||e[Symbol.iterator])yield*P(e,t);else if(e?.fn?.kind===N){let{task:l,template:n}=e.fn({...e.properties.reduce((a,r)=>({...a,[r.name]:r.value}),{}),children:e.children}),i=t.length;t.push(l().then(a=>({id:i,template:n({state:"success",data:a})})).catch(a=>({id:i,template:n({state:"error",error:a})}))),yield*P(s`<pending-task style="display: contents;" data-id="${i.toString()}">${n({state:"pending"})}</pending-task>`,t)}else e.kind===T?yield*P(await e.fn({...e.properties.reduce((l,n)=>({...l,[n.name]:n.value}),{}),children:e.children}),t):yield e.toString()}async function*P(e,t){for await(let l of e)yield*C(l,t)}var A;async function*x(e){let t=[];for(yield*P(e,t),t=t.map(l=>{let n=l.then(i=>(t.splice(t.indexOf(n),1),i));return n});t.length>0;){let l=await Promise.race(t),{id:n,template:i}=l;yield*x(s(A||(A=R([`
-      <template data-id="`,'">',`</template>
+(() => {
+  var __freeze = Object.freeze;
+  var __defProp = Object.defineProperty;
+  var __template = (cooked, raw) => __freeze(__defProp(cooked, "raw", { value: __freeze(raw || cooked.slice()) }));
+
+  // node_modules/swtl/symbol.js
+  var COMPONENT_SYMBOL = Symbol("component");
+  var ASYNC_SYMBOL = Symbol("async");
+
+  // node_modules/swtl/html.js
+  var TEXT = "TEXT";
+  var COMPONENT = "COMPONENT";
+  var NONE = "NONE";
+  var PROP = "PROP";
+  var CHILDREN = "CHILDREN";
+  var SET_PROP = "SET_PROP";
+  var PROP_VAL = "PROP_VAL";
+  function* html(statics, ...dynamics) {
+    if (!dynamics.length) {
+      yield* statics;
+    } else if (!dynamics.some((d) => typeof d === "function")) {
+      yield* statics.reduce((acc, s, i) => [...acc, s, ...dynamics.length > i ? [dynamics[i]] : []], []);
+    } else {
+      let MODE = TEXT;
+      let COMPONENT_MODE = NONE;
+      let PROP_MODE = NONE;
+      const componentStack = [];
+      for (let i = 0; i < statics.length; i++) {
+        let result = "";
+        const component = {
+          kind: COMPONENT_SYMBOL,
+          properties: [],
+          children: [],
+          fn: void 0
+        };
+        for (let j = 0; j < statics[i].length; j++) {
+          let c = statics[i][j];
+          if (MODE === TEXT) {
+            if (c === "<" && /**
+             * @example <${Foo}>
+             *           ^
+             */
+            !statics[i][j + 1] && typeof dynamics[i] === "function") {
+              MODE = COMPONENT;
+              component.fn = dynamics[i];
+              componentStack.push(component);
+            } else {
+              result += c;
+            }
+          } else if (MODE === COMPONENT) {
+            if (COMPONENT_MODE === PROP) {
+              const component2 = componentStack[componentStack.length - 1];
+              const property = component2?.properties[component2.properties.length - 1];
+              if (PROP_MODE === SET_PROP) {
+                let property2 = "";
+                while (statics[i][j] !== "=" && statics[i][j] !== "/" && statics[i][j] !== ">" && statics[i][j] !== '"' && statics[i][j] !== "'" && statics[i][j] !== " " && property2 !== "...") {
+                  property2 += statics[i][j];
+                  j++;
+                }
+                if (statics[i][j] === "=") {
+                  PROP_MODE = PROP_VAL;
+                } else if (statics[i][j] === "/" && COMPONENT_MODE === PROP) {
+                  COMPONENT_MODE = NONE;
+                  PROP_MODE = NONE;
+                  const component3 = componentStack.pop();
+                  if (!componentStack.length) {
+                    result = "";
+                    yield component3;
+                  }
+                } else if (statics[i][j] === ">" && COMPONENT_MODE === PROP) {
+                  COMPONENT_MODE = CHILDREN;
+                  PROP_MODE = NONE;
+                }
+                if (property2 === "...") {
+                  component2.properties.push(...Object.entries(dynamics[i]).map(([name, value]) => ({ name, value })));
+                } else if (property2) {
+                  component2.properties.push({ name: property2, value: true });
+                }
+              } else if (PROP_MODE === PROP_VAL) {
+                if (statics[i][j] === '"' || statics[i][j] === "'") {
+                  const quote = statics[i][j];
+                  if (!statics[i][j + 1]) {
+                    property.value = dynamics[i];
+                    PROP_MODE = SET_PROP;
+                  } else {
+                    let val = "";
+                    j++;
+                    while (statics[i][j] !== quote) {
+                      val += statics[i][j];
+                      j++;
+                    }
+                    property.value = val || "";
+                    PROP_MODE = SET_PROP;
+                  }
+                } else if (!statics[i][j - 1]) {
+                  property.value = dynamics[i - 1];
+                  PROP_MODE = SET_PROP;
+                  if (statics[i][j] === ">") {
+                    PROP_MODE = NONE;
+                    COMPONENT_MODE = CHILDREN;
+                  } else if (statics[i][j] === "/") {
+                    const component3 = componentStack.pop();
+                    if (!componentStack.length) {
+                      yield component3;
+                    }
+                  }
+                } else {
+                  let val = "";
+                  while (statics[i][j] !== " " && statics[i][j] !== "/" && statics[i][j] !== ">") {
+                    val += statics[i][j];
+                    j++;
+                  }
+                  property.value = val || "";
+                  PROP_MODE = SET_PROP;
+                  if (statics[i][j] === "/") {
+                    const component3 = componentStack.pop();
+                    if (!componentStack.length) {
+                      yield component3;
+                    }
+                  }
+                }
+              }
+            } else if (COMPONENT_MODE === CHILDREN) {
+              const currentComponent = componentStack[componentStack.length - 1];
+              if (statics[i][j + 1] === "/" && statics[i][j + 2] === "/") {
+                if (result) {
+                  currentComponent.children.push(result);
+                  result = "";
+                }
+                j += 3;
+                const component2 = componentStack.pop();
+                if (!componentStack.length) {
+                  MODE = TEXT;
+                  COMPONENT_MODE = NONE;
+                  yield component2;
+                }
+              } else if (statics[i][j] === "<" && !statics[i][j + 1] && typeof dynamics[i] === "function") {
+                if (result) {
+                  currentComponent.children.push(result);
+                  result = "";
+                }
+                COMPONENT_MODE = PROP;
+                PROP_MODE = SET_PROP;
+                component.fn = dynamics[i];
+                componentStack.push(component);
+              } else if (!statics[i][j + 1]) {
+                if (result && dynamics.length > i) {
+                  result += statics[i][j];
+                  currentComponent.children.push(result);
+                  currentComponent.children.push(dynamics[i]);
+                }
+              } else {
+                result += statics[i][j];
+              }
+            } else if (c === ">") {
+              COMPONENT_MODE = CHILDREN;
+            } else if (c === " ") {
+              COMPONENT_MODE = PROP;
+              PROP_MODE = SET_PROP;
+            } else if (c === "/" && statics[i][j + 1] === ">") {
+              MODE = TEXT;
+              COMPONENT_MODE = NONE;
+              const component2 = componentStack.pop();
+              if (!componentStack.length) {
+                result = "";
+                yield component2;
+              }
+              j++;
+            } else {
+              result += c;
+            }
+          } else {
+            result += c;
+          }
+        }
+        if (result && COMPONENT_MODE !== CHILDREN) {
+          yield result;
+        }
+        if (componentStack.length > 1 && component.fn) {
+          componentStack[componentStack.length - 2].children.push(component);
+        }
+        if (dynamics.length > i && MODE !== COMPONENT) {
+          yield dynamics[i];
+        }
+      }
+    }
+  }
+
+  // node_modules/swtl/async.js
+  function Async({ task, children }) {
+    return {
+      task,
+      template: children.find((c) => typeof c === "function")
+    };
+  }
+  Async.kind = ASYNC_SYMBOL;
+  var when = (condition, template) => condition ? template() : "";
+
+  // node_modules/swtl/render.js
+  function hasGetReader(obj) {
+    return typeof obj.getReader === "function";
+  }
+  async function* streamAsyncIterator(stream) {
+    const reader = stream.getReader();
+    const decoder = new TextDecoder("utf-8");
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done)
+          return;
+        yield decoder.decode(value);
+      }
+    } finally {
+      reader.releaseLock();
+    }
+  }
+  async function* handleIterator(iterable) {
+    if (hasGetReader(iterable)) {
+      for await (const chunk of streamAsyncIterator(iterable)) {
+        yield chunk;
+      }
+    } else {
+      for await (const chunk of iterable) {
+        yield chunk;
+      }
+    }
+  }
+  async function* handle(chunk, promises) {
+    if (typeof chunk === "string") {
+      yield chunk;
+    } else if (Array.isArray(chunk)) {
+      yield* _render(chunk, promises);
+    } else if (typeof chunk.then === "function") {
+      const v = await chunk;
+      yield* handle(v, promises);
+    } else if (chunk instanceof Response && chunk.body) {
+      yield* handleIterator(chunk.body);
+    } else if (chunk[Symbol.asyncIterator] || chunk[Symbol.iterator]) {
+      yield* _render(chunk, promises);
+    } else if (chunk?.fn?.kind === ASYNC_SYMBOL) {
+      const { task, template } = chunk.fn({
+        ...chunk.properties.reduce((acc, prop) => ({ ...acc, [prop.name]: prop.value }), {}),
+        children: chunk.children
+      });
+      const id = promises.length;
+      promises.push(
+        task().then((data) => ({
+          id,
+          template: template({ state: "success", data })
+        })).catch((error) => ({
+          id,
+          template: template({ state: "error", error })
+        }))
+      );
+      yield* _render(html`<pending-task style="display: contents;" data-id="${id.toString()}">${template({ state: "pending" })}</pending-task>`, promises);
+    } else if (chunk.kind === COMPONENT_SYMBOL) {
+      yield* _render(
+        await chunk.fn({
+          ...chunk.properties.reduce((acc, prop) => ({ ...acc, [prop.name]: prop.value }), {}),
+          children: chunk.children
+        }),
+        promises
+      );
+    } else {
+      yield chunk.toString();
+    }
+  }
+  async function* _render(template, promises) {
+    for await (const chunk of template) {
+      yield* handle(chunk, promises);
+    }
+  }
+  var _a;
+  async function* render(template) {
+    let promises = [];
+    yield* _render(template, promises);
+    promises = promises.map((promise) => {
+      let p = promise.then((val) => {
+        promises.splice(promises.indexOf(p), 1);
+        return val;
+      });
+      return p;
+    });
+    while (promises.length > 0) {
+      const nextPromise = await Promise.race(promises);
+      const { id, template: template2 } = nextPromise;
+      yield* render(html(_a || (_a = __template(['\n      <template data-id="', '">', `</template>
       <script>
         {
-          let toReplace = document.querySelector('pending-task[data-id="`,`"]');
-          const template = document.querySelector('template[data-id="`,`"]').content.cloneNode(true);
+          let toReplace = document.querySelector('pending-task[data-id="`, `"]');
+          const template = document.querySelector('template[data-id="`, `"]').content.cloneNode(true);
           toReplace.replaceWith(template);
         }
       <\/script>
-    `])),n.toString(),i,n.toString(),n.toString()))}}var E=class{constructor({routes:t,fallback:l,baseHref:n=""}){this.fallback={render:l,params:{}},this.routes=t.map(i=>({...i,urlPattern:new URLPattern({pathname:i.path,baseURL:`${self.location.origin}${n}`,search:"*",hash:"*"})}))}async handleRequest(t){let l=new URL(t.url),n;for(let a of this.routes){let r=a.urlPattern.exec(l);if(r){n={render:a.render,params:r?.pathname?.groups??{}};break}}let i=n?.render??this?.fallback?.render;if(i){let a=Object.fromEntries(new URLSearchParams(t.url.search)),r=x(i({query:a,params:n?.params,request:t})),f=new TextEncoder,u=new ReadableStream({async pull(o){let{value:c,done:d}=await r.next();d?o.close():o.enqueue(f.encode(c))}});return new Response(u,{status:200,headers:{"Content-Type":"text/html","Transfer-Encoding":"chunked"}})}}};var _;function y({children:e,title:t,styles:l=[]}){return s(_||(_=R([`
-    <html lang="en">
-      <head>
-        <meta charset="utf-8" />
-        <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-        <meta name="Description" content="swtl demo">
-        <title>`,`</title>
-        <style>
-          img {
-            max-width: 500px;
+    `])), id.toString(), template2, id.toString(), id.toString()));
+    }
+  }
+
+  // node_modules/swtl/router.js
+  var Router = class {
+    constructor({ routes, fallback, baseHref = "" }) {
+      this.fallback = {
+        render: fallback,
+        params: {}
+      };
+      this.routes = routes.map((route) => ({
+        ...route,
+        urlPattern: new URLPattern({
+          pathname: route.path,
+          baseURL: `${self.location.origin}${baseHref}`,
+          search: "*",
+          hash: "*"
+        })
+      }));
+    }
+    async handleRequest(request) {
+      const url = new URL(request.url);
+      let matchedRoute;
+      for (const route2 of this.routes) {
+        const match = route2.urlPattern.exec(url);
+        if (match) {
+          matchedRoute = {
+            render: route2.render,
+            params: match?.pathname?.groups ?? {}
+          };
+          break;
+        }
+      }
+      const route = matchedRoute?.render ?? this?.fallback?.render;
+      if (route) {
+        const query = Object.fromEntries(new URLSearchParams(request.url.search));
+        const iterator = render(route({ query, params: matchedRoute?.params, request }));
+        const encoder = new TextEncoder();
+        const stream = new ReadableStream({
+          async pull(controller) {
+            const { value, done } = await iterator.next();
+            if (done) {
+              controller.close();
+            } else {
+              controller.enqueue(encoder.encode(value));
+            }
           }
-        </style>
-        `,`
-      </head>
-      <body>
-        <h1>swtl</h1>
-        <nav>
+        });
+        return new Response(stream, {
+          status: 200,
+          headers: {
+            "Content-Type": "text/html",
+            "Transfer-Encoding": "chunked"
+          }
+        });
+      }
+    }
+  };
+
+  // src/pages/Html.js
+  var _a2;
+  function Html({ children, title, styles = [] }) {
+    return html(_a2 || (_a2 = __template(['\n    <html lang="en">\n      <head>\n        <meta charset="utf-8" />\n        <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">\n        <meta name="Description" content="swtl demo">\n        <title>', "</title>\n        <style>\n          img {\n            max-width: 500px;\n          }\n\n          footer {\n            margin-top: 50px;\n          }\n        </style>\n        ", '\n      </head>\n      <body>\n        <h1>swtl</h1>\n        <nav>\n          <ul>\n            <li><a href="/">home</a></li>\n            <li><a href="/generator">generator</a></li>\n            <li><a href="/really-long-list">render a really long list</a></li>\n            <li><a href="/out-of-order">out-of-order streaming</a></li>\n            <li>Blogs</li>\n            <ul>\n              <li><a href="/blog/swtl">Service Worker Templating Language</a></li>\n              <li><a href="/blog/swsr">Service Worker Side Rendering</a></li>\n            </ul>\n            <li><a href="/not-found">not found</a></li>\n          </ul>\n        </nav>\n        ', `
+        <footer>
+          This is the footer. 
           <ul>
-            <li><a href="/">home</a></li>
-            <li><a href="/generator">generator</a></li>
-            <li><a href="/really-long-list">render a really long list</a></li>
-            <li><a href="/out-of-order">out-of-order streaming</a></li>
-            <li>Blogs</li>
-            <ul>
-              <li><a href="/blog/swtl">Service Worker Templating Language</a></li>
-              <li><a href="/blog/swsr">Service Worker Side Rendering</a></li>
-            </ul>
-            <li><a href="/not-found">not found</a></li>
+            <li><a href="https://github.com/thepassle/swtl">Github</a></li>
+            <li><a href="https://twitter.com/passle_">Twitter</a></li>
           </ul>
-        </nav>
-        `,`
+        </footer>
         <script>
           let refreshing;
           async function handleUpdate() {
@@ -62,34 +387,99 @@
         <\/script>
       </body>
     </html>
-  `])),t??"",l,e)}async function*B(){await new Promise(e=>setTimeout(e,1e3)),yield*s`<li>1</li>`,await new Promise(e=>setTimeout(e,1e3)),yield*s`<li>2</li>`,await new Promise(e=>setTimeout(e,1e3)),yield*s`<li>3</li>`,await new Promise(e=>setTimeout(e,1e3)),yield*s`<li>4</li>`,await new Promise(e=>setTimeout(e,1e3)),yield*s`<li>5</li>`}function*U(){let e=0;for(;e<2e4;)yield*s`<li>${e++}</li>`}var H=new E({routes:[{path:"/",render:({params:e,query:t,request:l})=>s`
-        <${y} title="swtl">
+  `])), title ?? "", styles, children);
+  }
+
+  // src/sw.js
+  async function* generator() {
+    await new Promise((resolve) => setTimeout(resolve, 1e3));
+    yield* html`<li>1</li>`;
+    await new Promise((resolve) => setTimeout(resolve, 1e3));
+    yield* html`<li>2</li>`;
+    await new Promise((resolve) => setTimeout(resolve, 1e3));
+    yield* html`<li>3</li>`;
+    await new Promise((resolve) => setTimeout(resolve, 1e3));
+    yield* html`<li>4</li>`;
+    await new Promise((resolve) => setTimeout(resolve, 1e3));
+    yield* html`<li>5</li>`;
+  }
+  function* reallyLongList() {
+    let i = 0;
+    while (i < 2e4) {
+      yield* html`<li>${i++}</li>`;
+    }
+  }
+  var router = new Router({
+    routes: [
+      {
+        path: "/",
+        render: ({ params, query, request }) => html`
+        <${Html} title="swtl">
           Home
         <//>
-      `},{path:"/out-of-order",render:({params:e,query:t,request:l})=>s`
-        <${y} title="out of order">
+      `
+      },
+      {
+        path: "/out-of-order",
+        render: ({ params, query, request }) => html`
+        <${Html} title="out of order">
           <ul>
             <li>
-              <${O} task=${()=>new Promise(n=>setTimeout(()=>n({foo:"foo"}),3e3))}>
-                ${({state:n,data:i})=>s`
-                  ${v(n==="pending",()=>s`[PENDING] slow`)}
-                  ${v(n==="success",()=>s`[RESOLVED] slow ${i.foo}`)}
+              <${Async} task=${() => new Promise((r) => setTimeout(() => r({ foo: "foo" }), 3e3))}>
+                ${({ state, data }) => html`
+                  ${when(state === "pending", () => html`[PENDING] slow`)}
+                  ${when(state === "success", () => html`[RESOLVED] slow ${data.foo}`)}
                 `}
               <//>
             </li>
             <li>
-              <${O} task=${()=>new Promise(n=>setTimeout(()=>n({bar:"bar"}),1500))}>
-                ${({state:n,data:i})=>s`
-                  ${v(n==="pending",()=>s`[PENDING] fast`)}
-                  ${v(n==="success",()=>s`[RESOLVED] fast ${i.bar}`)}
+              <${Async} task=${() => new Promise((r) => setTimeout(() => r({ bar: "bar" }), 1500))}>
+                ${({ state, data }) => html`
+                  ${when(state === "pending", () => html`[PENDING] fast`)}
+                  ${when(state === "success", () => html`[RESOLVED] fast ${data.bar}`)}
                 `}
               <//>
             </li>
           </ul>
         <//>
-      `},{path:"/blog/:id",render:({params:e,query:t,request:l})=>s`
-        <${y} title=${`blog ${e.id}`}>
-          ${fetch(`./blogs/${e.id}.html`)}
+      `
+      },
+      {
+        path: "/blog/:id",
+        render: ({ params, query, request }) => html`
+        <${Html} title=${`blog ${params.id}`}>
+          ${fetch(`./blogs/${params.id}.html`)}
         <//>
-      `},{path:"/generator",render:({params:e,query:t,request:l})=>s`<${y} title="generator"><ul>${B()}</ul><//>`},{path:"/really-long-list",render:({params:e,query:t,request:l})=>s`<${y} title="really long list"><ul>${U()}</ul><//>`}],fallback:()=>s`<${y} title="not found">Not found!<//>`});self.addEventListener("install",()=>{self.skipWaiting()});self.addEventListener("activate",e=>{e.waitUntil(clients.claim().then(()=>{self.clients.matchAll().then(t=>{t.forEach(l=>l.postMessage({type:"SW_ACTIVATED"}))})}))});self.addEventListener("fetch",e=>{e.request.mode==="navigate"&&e.respondWith(H.handleRequest(e.request))});})();
-//# sourceMappingURL=sw.js.map
+      `
+      },
+      {
+        path: "/generator",
+        render: ({ params, query, request }) => html`<${Html} title="generator"><ul>${generator()}</ul><//>`
+      },
+      {
+        path: "/really-long-list",
+        render: ({ params, query, request }) => html`<${Html} title="really long list"><ul>${reallyLongList()}</ul><//>`
+      }
+    ],
+    fallback: () => html`<${Html} title="not found">Not found!<//>`
+  });
+  self.addEventListener("install", () => {
+    self.skipWaiting();
+  });
+  self.addEventListener("activate", (event) => {
+    event.waitUntil(
+      clients.claim().then(() => {
+        self.clients.matchAll().then((clients2) => {
+          clients2.forEach(
+            (client) => client.postMessage({ type: "SW_ACTIVATED" })
+          );
+        });
+      })
+    );
+  });
+  self.addEventListener("fetch", (event) => {
+    if (event.request.mode === "navigate") {
+      event.respondWith(router.handleRequest(event.request));
+    }
+  });
+})();
